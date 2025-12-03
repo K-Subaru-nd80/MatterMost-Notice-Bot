@@ -61,6 +61,12 @@ def cleanup_old_state(state: Dict[str, str], cutoff_days: int = 7) -> Dict[str, 
     for uid, start_time_str in state.items():
         try:
             start_time = datetime.fromisoformat(start_time_str)
+            # Ensure timezone-aware comparison by converting to UTC
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            else:
+                start_time = start_time.astimezone(timezone.utc)
+            
             if start_time >= cutoff_time:
                 cleaned[uid] = start_time_str
             else:
