@@ -45,6 +45,11 @@ def cleanup_old_entries(state: Dict[str, str], threshold_days: int = 7) -> Dict[
     for uid, start_iso in state.items():
         try:
             start_time = datetime.fromisoformat(start_iso)
+            # Ensure timezone-aware comparison
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            else:
+                start_time = start_time.astimezone(timezone.utc)
             if start_time >= cutoff:
                 cleaned[uid] = start_iso
         except (ValueError, TypeError):
@@ -209,6 +214,7 @@ def main() -> int:
     cleaned_count = original_count - len(notified_state)
     if cleaned_count > 0:
         print(f"[INFO] Cleaned up {cleaned_count} old notification entries")
+        save_state(state_file, notified_state)
     upcoming = detect_upcoming_events(events, window_minutes, now, notified_state)
     if max_events:
         upcoming = upcoming[:max_events]
