@@ -1,7 +1,7 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Dict, Iterable, List, Optional, Union
 from zoneinfo import ZoneInfo
 
 import requests
@@ -35,7 +35,30 @@ def load_state(path: str) -> Dict[str, str]:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError:
+        print(f"[WARN] State file {path} exists but could not be parsed. Notification state has been reset.")
         return {}
+
+
+def cleanup_old_entries(state: Dict[str, str], threshold_days: int = 7) -> Dict[str, str]:
+    """Remove entries for events that started more than threshold_days ago."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=threshold_days)
+    cleaned = {}
+    for uid, start_iso in state.items():
+        try:
+            start_time = datetime.fromisoformat(start_iso)
+            # Ensure timezone-aware comparison
+            # Note: Naive datetimes are assumed to be in UTC, matching the behavior
+            # of how events are stored in the state (see notified_state assignment in main())
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            else:
+                start_time = start_time.astimezone(timezone.utc)
+            if start_time >= cutoff:
+                cleaned[uid] = start_iso
+        except (ValueError, TypeError):
+            # Skip invalid entries
+            continue
+    return cleaned
 
 
 def save_state(path: str, state: Dict[str, str]) -> None:
@@ -44,46 +67,25 @@ def save_state(path: str, state: Dict[str, str]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def cleanup_old_state(state: Dict[str, str], threshold_days: int = 7) -> Dict[str, str]:
-    """Remove entries for events that started more than threshold_days ago.
+def normalize_datetime(value: Union[datetime, date], tz: ZoneInfo) -> datetime:
+    """Convert iCal datetime/date to an aware UTC datetime.
+    
+    Naive datetimes are first localized to the provided timezone before UTC conversion.
     
     Args:
-        state: Dictionary mapping event UIDs to ISO format start timestamps
-        threshold_days: Number of days to retain (default: 7)
-    
-    Returns:
-        New dictionary with only entries within the threshold.
-        Entries with invalid timestamps are preserved.
+        value: datetime or date object from iCal
+        tz: Timezone to use for naive datetimes (calendar's local timezone)
     """
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=threshold_days)
-    cleaned = {}
-    for uid, start_iso in state.items():
-        try:
-            start = datetime.fromisoformat(start_iso)
-            # Ensure start is timezone-aware for comparison
-            if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
-            if start >= cutoff:
-                cleaned[uid] = start_iso
-        except (ValueError, TypeError):
-            # Keep entries with invalid timestamps for now
-            cleaned[uid] = start_iso
-    return cleaned
-
-
-def normalize_datetime(value) -> datetime:
-    """Convert iCal datetime/date to an aware UTC datetime."""
     if isinstance(value, datetime):
         dt = value
     else:
         dt = datetime.combine(value, datetime.min.time())
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=tz)
     return dt.astimezone(timezone.utc)
 
 
-def extract_events(calendar: Calendar) -> Iterable[Dict]:
+def extract_events(calendar: Calendar, tz: ZoneInfo) -> Iterable[Dict]:
     for component in calendar.walk("VEVENT"):
         if not isinstance(component, Event):
             continue
@@ -93,9 +95,9 @@ def extract_events(calendar: Calendar) -> Iterable[Dict]:
         dtend = component.decoded("DTEND", None)
         duration = component.decoded("DURATION", None)
 
-        start = normalize_datetime(dtstart)
+        start = normalize_datetime(dtstart, tz)
         if dtend:
-            end = normalize_datetime(dtend)
+            end = normalize_datetime(dtend, tz)
         elif duration:
             end = start + duration
         else:
@@ -178,16 +180,16 @@ def main() -> int:
     try:
         ical_url = load_env_variable("ICAL_URL")
         webhook_url = load_env_variable("MATTERMOST_WEBHOOK_URL")
-        window_minutes_raw = load_env_variable("NOTICE_WINDOW_MINUTES")
+        window_minutes_str = load_env_variable("NOTICE_WINDOW_MINUTES")
         timezone_name = load_env_variable("TIMEZONE", required=False)
-        max_events_raw = load_env_variable("MAX_EVENTS", required=False)
+        max_events_str = load_env_variable("MAX_EVENTS", required=False)
         state_file = load_env_variable("STATE_FILE", required=False) or "state/notifications.json"
     except ConfigurationError as exc:
         print(f"[ERROR] {exc}")
         return 1
 
     try:
-        window_minutes = int(window_minutes_raw)
+        window_minutes = int(window_minutes_str)
         if window_minutes <= 0:
             raise ValueError
     except ValueError:
@@ -195,9 +197,9 @@ def main() -> int:
         return 1
 
     max_events = None
-    if max_events_raw:
+    if max_events_str:
         try:
-            parsed = int(max_events_raw)
+            parsed = int(max_events_str)
             if parsed > 0:
                 max_events = parsed
         except ValueError:
@@ -212,24 +214,26 @@ def main() -> int:
         print(f"[ERROR] Failed to fetch or parse calendar: {exc}")
         return 1
 
-    events = list(extract_events(calendar))
+    events = list(extract_events(calendar, tz))
     print(f"[INFO] Retrieved {len(events)} events from calendar")
 
     now = datetime.now(timezone.utc)
     notified_state = load_state(state_file)
     original_count = len(notified_state)
-    notified_state = cleanup_old_state(notified_state)
-    cleaned_count = len(notified_state)
-    if original_count > cleaned_count:
-        print(f"[INFO] Cleaned up {original_count - cleaned_count} old notification(s) from state")
+    notified_state = cleanup_old_entries(notified_state)
+    cleaned_count = original_count - len(notified_state)
+    if cleaned_count > 0:
+        print(f"[INFO] Cleaned up {cleaned_count} old notification entries")
+    
     upcoming = detect_upcoming_events(events, window_minutes, now, notified_state)
     if max_events:
         upcoming = upcoming[:max_events]
 
     if not upcoming:
         print("[INFO] No upcoming events to notify")
+        # Save state even when there are no events to persist cleanup
         save_state(state_file, notified_state)
-        print(f"[INFO] Ensured notification state is stored at {state_file}")
+        print(f"[INFO] Saved notification state to {state_file}")
         return 0
 
     message = build_message(upcoming, tz, window_minutes)
