@@ -114,7 +114,7 @@ def build_message(events: List[Dict], tz: ZoneInfo, window_minutes: int) -> str:
 def fetch_calendar(url: str) -> Calendar:
     response = requests.get(url, timeout=15)
     response.raise_for_status()
-    return Calendar.from_ical(response.text)
+    return Calendar.from_ical(response.content)
 
 
 def detect_upcoming_events(
