@@ -43,7 +43,7 @@ jobs:
           python -m src.notifier
 
       - name: Save notification state
-        if: always()
+        if: hashFiles('state/notifications.json') != ''
         uses: actions/cache/save@v4
         with:
           path: state/notifications.json

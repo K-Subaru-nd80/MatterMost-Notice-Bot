@@ -195,6 +195,8 @@ def main() -> int:
 
     if not upcoming:
         print("[INFO] No upcoming events to notify")
+        save_state(state_file, notified_state)
+        print(f"[INFO] Ensured notification state is stored at {state_file}")
         return 0
 
     message = build_message(upcoming, tz, window_minutes)
