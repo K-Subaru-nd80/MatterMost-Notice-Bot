@@ -47,7 +47,7 @@ def cleanup_old_entries(state: Dict[str, str], threshold_days: int = 7) -> Dict[
             start_time = datetime.fromisoformat(start_iso)
             # Ensure timezone-aware comparison
             # Note: Naive datetimes are assumed to be in UTC, matching the behavior
-            # of how events are stored in the state (see line 227)
+            # of how events are stored in the state (see notified_state assignment in main())
             if start_time.tzinfo is None:
                 start_time = start_time.replace(tzinfo=timezone.utc)
             else:
@@ -223,7 +223,7 @@ def main() -> int:
 
     if not upcoming:
         print("[INFO] No upcoming events to notify")
-        # Save state even when no events to persist cleanup
+        # Save state even when there are no events to persist cleanup
         save_state(state_file, notified_state)
         print(f"[INFO] Saved notification state to {state_file}")
         return 0
