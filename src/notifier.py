@@ -44,6 +44,22 @@ def save_state(path: str, state: Dict[str, str]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+def cleanup_old_state(state: Dict[str, str], threshold_days: int = 7) -> Dict[str, str]:
+    """Remove entries for events that started more than threshold_days ago."""
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=threshold_days)
+    cleaned = {}
+    for uid, start_iso in state.items():
+        try:
+            start = datetime.fromisoformat(start_iso)
+            if start >= cutoff:
+                cleaned[uid] = start_iso
+        except (ValueError, TypeError):
+            # Keep entries with invalid timestamps for now
+            cleaned[uid] = start_iso
+    return cleaned
+
+
 def normalize_datetime(value) -> datetime:
     """Convert iCal datetime/date to an aware UTC datetime."""
     if isinstance(value, datetime):
@@ -189,6 +205,11 @@ def main() -> int:
 
     now = datetime.now(timezone.utc)
     notified_state = load_state(state_file)
+    original_count = len(notified_state)
+    notified_state = cleanup_old_state(notified_state)
+    cleaned_count = len(notified_state)
+    if original_count > cleaned_count:
+        print(f"[INFO] Cleaned up {original_count - cleaned_count} old notification(s) from state")
     upcoming = detect_upcoming_events(events, window_minutes, now, notified_state)
     if max_events:
         upcoming = upcoming[:max_events]
