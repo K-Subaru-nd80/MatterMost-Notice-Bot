@@ -45,7 +45,16 @@ def save_state(path: str, state: Dict[str, str]) -> None:
 
 
 def cleanup_old_state(state: Dict[str, str], threshold_days: int = 7) -> Dict[str, str]:
-    """Remove entries for events that started more than threshold_days ago."""
+    """Remove entries for events that started more than threshold_days ago.
+    
+    Args:
+        state: Dictionary mapping event UIDs to ISO format start timestamps
+        threshold_days: Number of days to retain (default: 7)
+    
+    Returns:
+        New dictionary with only entries within the threshold.
+        Entries with invalid timestamps are preserved.
+    """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=threshold_days)
     cleaned = {}
