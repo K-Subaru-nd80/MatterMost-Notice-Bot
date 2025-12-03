@@ -44,6 +44,37 @@ def save_state(path: str, state: Dict[str, str]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+def cleanup_old_state(state: Dict[str, str], cutoff_days: int = 7) -> Dict[str, str]:
+    """Remove state entries older than the specified number of days.
+    
+    Args:
+        state: Dictionary mapping event UIDs to ISO-formatted start times
+        cutoff_days: Number of days to keep in state (default: 7)
+    
+    Returns:
+        Cleaned state dictionary with old entries removed
+    """
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+    cleaned = {}
+    removed_count = 0
+    
+    for uid, start_time_str in state.items():
+        try:
+            start_time = datetime.fromisoformat(start_time_str)
+            if start_time >= cutoff_time:
+                cleaned[uid] = start_time_str
+            else:
+                removed_count += 1
+        except (ValueError, TypeError):
+            # Keep entries with invalid timestamps to avoid data loss
+            cleaned[uid] = start_time_str
+    
+    if removed_count > 0:
+        print(f"[INFO] Cleaned up {removed_count} old state entries (older than {cutoff_days} days)")
+    
+    return cleaned
+
+
 def normalize_datetime(value) -> datetime:
     """Convert iCal datetime/date to an aware UTC datetime."""
     if isinstance(value, datetime):
@@ -189,6 +220,7 @@ def main() -> int:
 
     now = datetime.now(timezone.utc)
     notified_state = load_state(state_file)
+    notified_state = cleanup_old_state(notified_state)
     upcoming = detect_upcoming_events(events, window_minutes, now, notified_state)
     if max_events:
         upcoming = upcoming[:max_events]
