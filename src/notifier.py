@@ -35,6 +35,7 @@ def load_state(path: str) -> Dict[str, str]:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError:
+        print(f"[WARN] State file {path} exists but could not be parsed. Notification state has been reset.")
         return {}
 
 
