@@ -38,6 +38,28 @@ def load_state(path: str) -> Dict[str, str]:
         return {}
 
 
+def cleanup_old_entries(state: Dict[str, str], threshold_days: int = 7) -> Dict[str, str]:
+    """Remove entries for events that started more than threshold_days ago."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=threshold_days)
+    cleaned = {}
+    for uid, start_iso in state.items():
+        try:
+            start_time = datetime.fromisoformat(start_iso)
+            # Ensure timezone-aware comparison
+            # Note: Naive datetimes are assumed to be in UTC, matching the behavior
+            # of how events are stored in the state (see notified_state assignment in main())
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            else:
+                start_time = start_time.astimezone(timezone.utc)
+            if start_time >= cutoff:
+                cleaned[uid] = start_iso
+        except (ValueError, TypeError):
+            # Skip invalid entries
+            continue
+    return cleaned
+
+
 def save_state(path: str, state: Dict[str, str]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -196,14 +218,21 @@ def main() -> int:
 
     now = datetime.now(timezone.utc)
     notified_state = load_state(state_file)
+    original_count = len(notified_state)
+    notified_state = cleanup_old_entries(notified_state)
+    cleaned_count = original_count - len(notified_state)
+    if cleaned_count > 0:
+        print(f"[INFO] Cleaned up {cleaned_count} old notification entries")
+    
     upcoming = detect_upcoming_events(events, window_minutes, now, notified_state)
     if max_events:
         upcoming = upcoming[:max_events]
 
     if not upcoming:
         print("[INFO] No upcoming events to notify")
+        # Save state even when there are no events to persist cleanup
         save_state(state_file, notified_state)
-        print(f"[INFO] Ensured notification state is stored at {state_file}")
+        print(f"[INFO] Saved notification state to {state_file}")
         return 0
 
     message = build_message(upcoming, tz, window_minutes)
