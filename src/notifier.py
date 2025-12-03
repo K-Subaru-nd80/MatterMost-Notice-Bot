@@ -1,7 +1,7 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Dict, Iterable, List, Optional, Union
 from zoneinfo import ZoneInfo
 
 import requests
@@ -44,18 +44,25 @@ def save_state(path: str, state: Dict[str, str]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def normalize_datetime(value) -> datetime:
-    """Convert iCal datetime/date to an aware UTC datetime."""
+def normalize_datetime(value: Union[datetime, date], tz: ZoneInfo) -> datetime:
+    """Convert iCal datetime/date to an aware UTC datetime.
+    
+    Naive datetimes are first localized to the provided timezone before UTC conversion.
+    
+    Args:
+        value: datetime or date object from iCal
+        tz: Timezone to use for naive datetimes (calendar's local timezone)
+    """
     if isinstance(value, datetime):
         dt = value
     else:
         dt = datetime.combine(value, datetime.min.time())
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=tz)
     return dt.astimezone(timezone.utc)
 
 
-def extract_events(calendar: Calendar) -> Iterable[Dict]:
+def extract_events(calendar: Calendar, tz: ZoneInfo) -> Iterable[Dict]:
     for component in calendar.walk("VEVENT"):
         if not isinstance(component, Event):
             continue
@@ -65,9 +72,9 @@ def extract_events(calendar: Calendar) -> Iterable[Dict]:
         dtend = component.decoded("DTEND", None)
         duration = component.decoded("DURATION", None)
 
-        start = normalize_datetime(dtstart)
+        start = normalize_datetime(dtstart, tz)
         if dtend:
-            end = normalize_datetime(dtend)
+            end = normalize_datetime(dtend, tz)
         elif duration:
             end = start + duration
         else:
@@ -184,7 +191,7 @@ def main() -> int:
         print(f"[ERROR] Failed to fetch or parse calendar: {exc}")
         return 1
 
-    events = list(extract_events(calendar))
+    events = list(extract_events(calendar, tz))
     print(f"[INFO] Retrieved {len(events)} events from calendar")
 
     now = datetime.now(timezone.utc)
