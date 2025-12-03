@@ -150,16 +150,16 @@ def main() -> int:
     try:
         ical_url = load_env_variable("ICAL_URL")
         webhook_url = load_env_variable("MATTERMOST_WEBHOOK_URL")
-        window_minutes_raw = load_env_variable("NOTICE_WINDOW_MINUTES")
+        window_minutes_str = load_env_variable("NOTICE_WINDOW_MINUTES")
         timezone_name = load_env_variable("TIMEZONE", required=False)
-        max_events_raw = load_env_variable("MAX_EVENTS", required=False)
+        max_events_str = load_env_variable("MAX_EVENTS", required=False)
         state_file = load_env_variable("STATE_FILE", required=False) or "state/notifications.json"
     except ConfigurationError as exc:
         print(f"[ERROR] {exc}")
         return 1
 
     try:
-        window_minutes = int(window_minutes_raw)
+        window_minutes = int(window_minutes_str)
         if window_minutes <= 0:
             raise ValueError
     except ValueError:
@@ -167,9 +167,9 @@ def main() -> int:
         return 1
 
     max_events = None
-    if max_events_raw:
+    if max_events_str:
         try:
-            parsed = int(max_events_raw)
+            parsed = int(max_events_str)
             if parsed > 0:
                 max_events = parsed
         except ValueError:
