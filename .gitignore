@@ -1,0 +1,4 @@
+__pycache__/
+.state/
+state/notifications.json
+*.pyc
