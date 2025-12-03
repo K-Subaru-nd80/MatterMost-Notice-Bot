@@ -1,7 +1,7 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Dict, Iterable, List, Optional, Union
 from zoneinfo import ZoneInfo
 
 import requests
@@ -44,7 +44,7 @@ def save_state(path: str, state: Dict[str, str]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def normalize_datetime(value, tz: ZoneInfo) -> datetime:
+def normalize_datetime(value: Union[datetime, date], tz: ZoneInfo) -> datetime:
     """Convert iCal datetime/date to an aware UTC datetime.
     
     Args:
