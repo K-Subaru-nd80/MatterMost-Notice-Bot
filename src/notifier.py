@@ -46,6 +46,9 @@ def save_state(path: str, state: Dict[str, str]) -> None:
 
 def normalize_datetime(value: Union[datetime, date], tz: ZoneInfo) -> datetime:
     """Convert iCal datetime/date to an aware UTC datetime.
+    
+    Naive datetimes are first localized to the provided timezone before UTC conversion.
+    
     Args:
         value: datetime or date object from iCal
         tz: Timezone to use for naive datetimes (calendar's local timezone)
