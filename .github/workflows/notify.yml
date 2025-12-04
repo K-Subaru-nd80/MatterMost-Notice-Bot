@@ -7,15 +7,16 @@ on:
 
 jobs:
   notify:
-    if: ${{ secrets.ICAL_URL != '' && secrets.MATTERMOST_WEBHOOK_URL != '' && vars.NOTICE_WINDOW_MINUTES != '' }}
     runs-on: ubuntu-latest
     environment: main
+
     env:
       ICAL_URL: ${{ secrets.ICAL_URL }}
       MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
       NOTICE_WINDOW_MINUTES: ${{ vars.NOTICE_WINDOW_MINUTES }}
       TIMEZONE: ${{ vars.TIMEZONE }}
       MAX_EVENTS: ${{ vars.MAX_EVENTS }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
